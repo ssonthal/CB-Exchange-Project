@@ -1,10 +1,11 @@
 import express from "express";
 import { userRoute } from "./routes/user";
 import { orderRoute } from "./routes/order";
+import { authMiddleware } from "./middleware/mdw";
 
 const app:any = express();
 
-
+app.use(authMiddleware);
 app.use("/api/user", userRoute);
 app.use("/api/order", orderRoute);
 

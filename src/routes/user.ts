@@ -3,36 +3,38 @@ import express, {Request, Response}  from "express";
 export const userRoute:any = express.Router();
 userRoute.use(express.json());
 
-interface User {
-    customer_id: number, 
-    first_name: string, 
-    last_name: string, 
+export interface OwnedAssets {
+    avg_price: number, 
+    qty: number, 
+    ticker: string
+}
+
+export interface User {
+    customer_id: number,  
     email: string, 
-    balance: number
+    balance: number,
+    assets: OwnedAssets[]
 }
 
 // in-memory user data
-let users:User[] = [
+export const users:User[] = [
     {
         customer_id: 169876,
-        first_name: "Shubham",
-        last_name: "Sonthalia",
         email: "shubham@gmail.com",
-        balance: 14942.43
+        balance: 14942.43,
+        assets: []
     }, 
     {
         customer_id: 169877,
-        first_name: "Sam",
-        last_name: "Singh",
         email: "samgmail.com",
-        balance: 10000000.00
+        balance: 10000000.00,
+        assets: []
     }, 
     {
         customer_id: 169878,
-        first_name: "Sukh",
-        last_name: "Dev",
         email: "sukhgmail.com",
-        balance: 98765.43
+        balance: 98765.43,
+        assets: []
     }
 ];
 
