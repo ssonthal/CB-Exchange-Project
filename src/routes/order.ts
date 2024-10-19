@@ -91,6 +91,7 @@ orderRoute.post("/", (req:Request, res:Response) => {
         if (ticker in order_books)
         {
             const order_book = order_books.ticker;
+            // Case 1: Market Order & Buy
             if(body.type == "buy"){
                 const buyer:User = req.userDetail;
                 const asks:Order[] = order_book.filter((order) => {order.type == Side.Sell});
@@ -101,9 +102,6 @@ orderRoute.post("/", (req:Request, res:Response) => {
                         if(ask.qty > qty){
                             if(buyer.balance >= ask.price*qty)
                             {
-                                // handle order book data
-                                order_book[order_book.indexOf(ask)].qty -= qty;
-
                                 // First come First serve for stakeholders
                                 ask.stakeholders.sort((s1, s2) => {return s1.createdAt.getTime() - s2.createdAt.getTime();});
 
@@ -161,6 +159,17 @@ orderRoute.post("/", (req:Request, res:Response) => {
                                         users.set(buyer.customer_id.toString(), buyer);
                                         users.set(seller?.customer_id.toString(), seller);
                                     }
+                                    
+                                    // handle order book data
+                                    order_book[order_book.indexOf(ask)].qty -= qty;
+                                    order_books[ticker] = order_book;
+                                    return res.status(200).json({
+                                        msg: "Txn Successful"
+                                    });
+
+                                }
+                                else{
+                                    return res.status(403).json({msg: "No eligible seller found!"});
                                 }                              
                             }
                         }
@@ -169,6 +178,8 @@ orderRoute.post("/", (req:Request, res:Response) => {
                 }
 
             }
+            // Case 2: Market Order & Sell 
+            
         }
         
     }
