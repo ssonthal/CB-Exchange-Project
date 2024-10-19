@@ -88,33 +88,83 @@ orderRoute.post("/", (req:Request, res:Response) => {
         //market order
         var qty = body.qty;
         var ticker = body.ticker;
-        const user = req.userDetail;
         if (ticker in order_books)
         {
             const order_book = order_books.ticker;
-            if(body.type == "sell"){
-                const bids:Order[] = order_book.filter((order) => {order.type == Side.Buy});
-                if(bids.length > 0){
+            if(body.type == "buy"){
+                const buyer:User = req.userDetail;
+                const asks:Order[] = order_book.filter((order) => {order.type == Side.Sell});
+                if(asks.length > 0){
                     //sort the bids based on price
-                    bids.sort((o1, o2) => o1.price - o2.price);
-                    bids.map((bid) => {
-                        if(bid.qty > qty){
-                            if(user.balance >= qty*bid.price)
+                    asks.sort((o1, o2) => o2.price - o1.price);
+                    asks.map((ask) => {
+                        if(ask.qty > qty){
+                            if(buyer.balance >= ask.price*qty)
                             {
-                                user.balance -= bid.price*qty;
-                                bid.qty -= qty;
-                                user.assets.add({ticker: ticker, qty : qty, avg_price: bid.price});
+                                // handle order book data
+                                order_book[order_book.indexOf(ask)].qty -= qty;
 
-                                // First come First serve
-                                bid.stakeholders.sort((s1, s2) => {return s1.createdAt.getTime() - s2.createdAt.getTime();});
+                                // First come First serve for stakeholders
+                                ask.stakeholders.sort((s1, s2) => {return s1.createdAt.getTime() - s2.createdAt.getTime();});
 
                                 // checking for qty
+                                const stakeholder: Stakeholder | undefined  = ask.stakeholders.find((stakeholder) => {return stakeholder.qty >= qty});
+                                let seller_id:number;
+                                if (stakeholder) {
+                                    seller_id = stakeholder.customer_id;
+                                    if(stakeholder.qty == qty) {
+                                        //remove stakeholder
+                                        ask.stakeholders.splice(ask.stakeholders.indexOf(stakeholder));
+                                    }
+                                    else {
+                                        //partial order serving
+                                        ask.stakeholders[ask.stakeholders.indexOf(stakeholder)].qty -= qty;
+                                    }
+
+                                    //handle buyer and seller data
                                 
-                                
+                                    buyer.balance -= ask.price*qty;
+                                    if (ticker in buyer.assets)
+                                    {
+                                        const ownedAssets: undefined | OwnedAssets = 
+                                        buyer.assets.get(ticker);
+                                        if(ownedAssets){
+                                            ownedAssets.qty += qty;
+                                            buyer.assets.set(ticker, ownedAssets);
+                                        }
+                                    }
+                                    else
+                                    {
+                                        buyer.assets.set(ticker, {qty : qty, avg_price: ask.price});
+                                    }
+
+                                    const seller:User | undefined = users.get(seller_id.toString());
+
+                                    if(seller)
+                                    {
+                                        seller.balance += ask.price*qty;
+                                        if (ticker in seller.assets)
+                                        {
+                                            const ownedAssets: undefined | OwnedAssets = 
+                                            buyer.assets.get(ticker);
+                                            if(ownedAssets){
+                                                ownedAssets.qty -= qty;
+                                                if(ownedAssets.qty == 0){
+                                                    seller.assets.delete(ticker);
+                                                }
+                                                else{
+                                                    seller.assets.set(ticker, ownedAssets);
+                                                }
+                                                
+                                            }
+                                        }
+                                        users.set(buyer.customer_id.toString(), buyer);
+                                        users.set(seller?.customer_id.toString(), seller);
+                                    }
+                                }                              
                             }
-                            bid.qty -= qty;
-                            user.balance
                         }
+                        ask
                     });
                 }
 

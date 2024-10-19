@@ -12,7 +12,7 @@ export const authMiddleware = (req:Request, res:Response, next:NextFunction) => 
     try
     {
         var decoded:any = jwt.verify(jwtToken, "secret_key");
-        const user = users.find((user) => user.customer_id.toString() == decoded.userId);
+        const user:User | undefined = users.get(decoded.userId);
         if (!user){
             return res.status(401).json({});
         }
