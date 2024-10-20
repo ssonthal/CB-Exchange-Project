@@ -19,7 +19,7 @@ interface Order {
     type: Side, 
     price: number,
     qty: number,
-    stakeholders: Stakeholder[]
+    stakeholders: Map<string, Stakeholder>
 }
 
 
@@ -130,7 +130,7 @@ function handleMarketBuyOrders(req:Request, res: Response, order_book:Order[])
                             if (sellOrder.qty > buyQty)
                             {
                                 if (buyer.balance >= sellOrder.price*buyQty){
-                                    validStakeholders:Stakeholder[]  = getValidStakeholdersFromSellOrders();
+                                    let validStakeholders:Stakeholder[]  = getValidStakeholdersFromSellOrder([sellOrder], qty);
                                     updateSellOrdersInOrdersMap();
                                 }
                                 else{
@@ -217,7 +217,42 @@ function updateUserBalanceAndAssets(user:User, price:number, qty: number, ticker
     users.set(user.customer_id.toString(), user);   
 }
 
-function getValidStakeholdersFromSellOrders(){
+function getValidStakeholdersFromSellOrder(order: Order, qty: number) {
     
+    let stakeholders:Stakeholder[] = [];
+    
+    order.stakeholders = sortStakeholdersBasedOnOrderCreatedTime(order);
+
+    let excessQtyStakeholderId = ""; 
+    for (const [customer_id, stakeholder] of order.stakeholders) {
+        if (qty - stakeholder.qty >= 0) {
+            qty -= stakeholder.qty;
+            stakeholders.push(stakeholder);
+        }
+        else{
+            // there is a chance that qty == 0 when the control reaches here.
+            // in that case, we can simply break the loop.
+            if(qty > 0){
+                excessQtyStakeholderId = customer_id;
+            }
+            break;
+        }
+    }
+
+    if(excessQtyStakeholderId) {
+        //update stakeholder's qty. don't delete.
+        let excessQtyStakeholder:any = order.stakeholders.get(excessQtyStakeholderId);
+        excessQtyStakeholder.qty -= qty;
+        stakeholders.push(excessQtyStakeholder);
+        qty = 0;
+        order.stakeholders.set(excessQtyStakeholderId, excessQtyStakeholder);
+    }   
 }
 
+function sortStakeholdersBasedOnOrderCreatedTime(order:Order){
+    const stakeholderMapArray = Array.from(order.stakeholders);
+    const sorted = stakeholderMapArray.sort((a, b) => {
+        return a[1].createdAt.getTime() - b[1].createdAt.getTime();
+    });
+    return new Map<string, Stakeholder>(sorted);
+}
