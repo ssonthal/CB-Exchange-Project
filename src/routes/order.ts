@@ -104,17 +104,17 @@ orderRoute.post("/", (req:Request, res:Response) => {
                 return handleMarketBuyOrders(req, res, order_book);
             }
             else if (req.body.type == Side.Sell){
-                return handleMarketSellOrders(req, order_book);
+                return handleMarketSellOrders(req, res, order_book);
             }
         }
         else{
             const order_book = order_books.ticker;
             if(req.body.type == Side.Buy)
             {
-                return handleLimitBuyOrders(req, order_book);
+                return handleLimitBuyOrders(req, res, order_book);
             }
             else if (req.body.type == Side.Sell){
-                return handleLimitSellOrders(req, order_book);
+                return handleLimitSellOrders(req, res, order_book);
             }
         }
     }
@@ -264,6 +264,19 @@ function clearSellOrder(req:Request, res:Response, buyer:User, sellOrder:Order, 
     return sellOrder;
 }
 
-function handleLimitBuyOrders(req:Request, order_book: Order[]) {
-    // jsut add to the order book?
+
+function handleMarketSellOrders(req:Request, res: Response, order_book: Order[]) {
+
+}
+function handleLimitBuyOrders(req:Request, res: Response, order_book: Order[]) {
+
+    // 1. if any matching sell limit order or an order with lower price found => place market orders at the price for the sell order's quantity
+    // 2. if the qty != 0 => add a new limit order in the order book with remaining qty.
+    // 3. step 2 to be done if step 1 condition is false
+}
+
+function handleLimitSellOrders(req:Request, res: Response, order_book: Order[]) {
+    // 1. if any matching buy order found with price equal or greater => place market sell orders at the price for the buy order's qty. 
+    // 2. if the qty != 0 => add a new sell limit order in the order book with remaining qty. 
+    // 3. step 2 to be done if step 1 condition is false
 }
