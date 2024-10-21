@@ -11,7 +11,8 @@ enum Side {
 
 interface Stakeholder {
     customer_id : number, 
-    qty: number, 
+    qty: number,
+    price: number,
     createdAt: Date
 }
 
@@ -129,30 +130,47 @@ function handleMarketBuyOrders(req:Request, res: Response, order_book:Order[])
                 const sellOrders:Order[] = order_book.filter((order) => {order.type == Side.Sell});
                 const buyQty = req.body.qty;
                 const ticker = req.body.ticker;
+                let allSellers:Stakeholder[] = [];
+                let avg_price = 0;
+                let ordersToBeRemoved = [];
                 if(sellOrders.length > 0){
-                    //sort the bids based on price
                     var remaining_qty = buyQty;
-                    
-                    while (remaining_qty > 0){
+                    while (remaining_qty > 0) {
                         sellOrders.sort((o1, o2) => o2.price - o1.price);
-                        for(let i = 0; i < sellOrders.length; i++){
-                            if (sellOrders[i].qty > buyQty)
+                        for(let i = 0; i < sellOrders.length; i++) {
+                            if (buyer.balance >= sellOrders[i].price*buyQty)
                             {
-                                if (buyer.balance >= sellOrders[i].price*buyQty) {
-                                    sellOrders[i] = clearSellOrder(req, res, buyer, sellOrders[i], buyQty, ticker);
+                                if (sellOrders[i].qty > buyQty)
+                                {
+                                    let {order, stakeholders} = getValidStakeholdersFromSellOrder(sellOrders[i], remaining_qty);
+                                    sellOrders[i] = order;
+                                    allSellers.concat(stakeholders);
                                     remaining_qty = 0; 
-                                    break;
+                                    break; 
                                 }
                                 else {
-                                    return res.status(403).json({msg: "Insufficient wallet balance"});
-                                }   
+                                    remaining_qty -= sellOrders[i].qty;
+                                    for (const [customer_id, stakeholder] of sellOrders[i].stakeholders) {
+                                        allSellers.push(stakeholder);
+                                    }
+                                    ordersToBeRemoved.push(sellOrders[i].id);
+                                }
                             }
-                            else{
-                                
+                            else {
+                                return res.status(403).json({msg: "Insufficient wallet balance"});
                             }
                         }
                     }
-
+                    let totalPrice = 0; 
+                    for (let j = 0; j < allSellers.length; j++){
+                        let seller = users.get(allSellers[j].customer_id.toString());
+                        if(seller) {
+                            totalPrice += allSellers[j].price;
+                            updateUserBalanceAndAssets(seller, allSellers[j].price, allSellers[j].qty, ticker, Side.Sell);
+                        }
+                    }
+                    let avgPrice = totalPrice/allSellers.length;
+                    updateUserBalanceAndAssets(buyer, avgPrice, buyQty, ticker, Side.Buy);
                 }
 
             } 
@@ -177,7 +195,7 @@ function updateUserBalanceAndAssets(user:User, price:number, qty: number, ticker
         user.balance += price*qty;
         const ownedAssets:any = user.assets.get(ticker);
         ownedAssets.qty -= qty;
-        if(ownedAssets.qty > 0){
+        if(ownedAssets.qty > 0) {
             user.assets.set(ticker, ownedAssets);
         }
         else 
@@ -214,9 +232,11 @@ function getValidStakeholdersFromSellOrder(order: Order, qty: number) {
         //update stakeholder's qty. don't delete.
         let excessQtyStakeholder:any = order.stakeholders.get(excessQtyStakeholderId);
         excessQtyStakeholder.qty -= qty;
+        
+        order.stakeholders.set(excessQtyStakeholderId, excessQtyStakeholder);
+        excessQtyStakeholder.qty = qty;
         stakeholders.push(excessQtyStakeholder);
         qty = 0;
-        order.stakeholders.set(excessQtyStakeholderId, excessQtyStakeholder);
     }
     return {order, stakeholders};
 }
@@ -242,4 +262,8 @@ function clearSellOrder(req:Request, res:Response, buyer:User, sellOrder:Order, 
         }
     }
     return sellOrder;
+}
+
+function handleLimitBuyOrders(req:Request, order_book: Order[]) {
+    // jsut add to the order book?
 }
