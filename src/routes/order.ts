@@ -16,6 +16,7 @@ interface Stakeholder {
 }
 
 interface Order {
+    id: number, 
     type: Side, 
     price: number,
     qty: number,
@@ -27,52 +28,60 @@ let order_books:{[key: string] : Order[]} = {
     "tata" : 
     [
         {
+            id: 1, 
             type: Side.Sell,
             price: 1000,
             qty: 7,
-            stakeholders: []
+            stakeholders: new Map()
         }, 
         {
+            id: 2, 
             type: Side.Sell,
             price: 999,
             qty: 12, 
-            stakeholders: []
+            stakeholders: new Map()
         }, 
         {
+            id: 3, 
             type: Side.Sell,
             price: 998,
             qty: 21, 
-            stakeholders: []
+            stakeholders: new Map()
         }, 
         {
+            id: 4, 
             type: Side.Sell,
             price: 997,
             qty: 100, 
-            stakeholders: []
+            stakeholders: new Map()
         }, 
-            {
+        {
+            id: 5, 
             type: Side.Buy,
             price: 995,
             qty: 7, 
-            stakeholders: []
+            stakeholders: new Map()
         }, 
         {
+            id: 6, 
             type: Side.Buy,
             price: 994,
             qty: 12,
-            stakeholders: [] 
+            stakeholders: new Map()
         }, 
         {
+            id: 7 , 
             type: Side.Buy,
             price: 993,
             qty: 21,
-            stakeholders: []
+            stakeholders: new Map()
         }, 
         {
+            id: 8, 
             type: Side.Buy,
             price: 992,
             qty: 100,
-            stakeholders: []
+            stakeholders: new Map()
         }
     ],  
 };
@@ -126,62 +135,24 @@ function handleMarketBuyOrders(req:Request, res: Response, order_book:Order[])
                     
                     while (remaining_qty > 0){
                         sellOrders.sort((o1, o2) => o2.price - o1.price);
-                        sellOrders.map((sellOrder) => {
-                            if (sellOrder.qty > buyQty)
+                        for(let i = 0; i < sellOrders.length; i++){
+                            if (sellOrders[i].qty > buyQty)
                             {
-                                if (buyer.balance >= sellOrder.price*buyQty){
-                                    let validStakeholders:Stakeholder[]  = getValidStakeholdersFromSellOrder([sellOrder], qty);
-                                    updateSellOrdersInOrdersMap();
-                                }
-                                else{
-                                    return res.status(403).json({msg: "Insufficient wallet balance"});
-                                }
-                                
-                            }
-                        });
-                    }
-                    
-                    asks.map((ask) => {
-                        if(ask.qty > qty && buyer.balance >= ask.price*qty) {
-                            // First come First serve for stakeholders
-                            
-                            ask.stakeholders.sort((s1, s2) => {return s1.createdAt.getTime() - s2.createdAt.getTime();});
-                            // checking for qty
-                            const stakeholder: Stakeholder | undefined  = ask.stakeholders.find((stakeholder) => {return stakeholder.qty >= qty});
-                            while (ask)
-                            let seller_id:number;
-                            if (stakeholder) {
-                                seller_id = stakeholder.customer_id;
-                                if(stakeholder.qty == qty) {
-                                    //remove stakeholder
-                                    ask.stakeholders.splice(ask.stakeholders.indexOf(stakeholder));
+                                if (buyer.balance >= sellOrders[i].price*buyQty) {
+                                    sellOrders[i] = clearSellOrder(req, res, buyer, sellOrders[i], buyQty, ticker);
+                                    remaining_qty = 0; 
+                                    break;
                                 }
                                 else {
-                                    //partial order serving
-                                    ask.stakeholders[ask.stakeholders.indexOf(stakeholder)].qty -= qty;
-                                }
-
-                                //handle buyer and seller data
-                                updateUserBalanceAndAssets(buyer, ask.price, qty, ticker, Side.Buy);
-
-                                const seller:any = users.get(seller_id.toString());
-                                
-                                updateUserBalanceAndAssets(seller, ask.price, qty, ticker, Side.Sell);
-                                
-                                // handle order book data
-                                order_book[order_book.indexOf(ask)].qty -= qty;
-                                order_books[ticker] = order_book;
-                                return res.status(200).json({
-                                    msg: "Txn Successful"
-                                });
-
+                                    return res.status(403).json({msg: "Insufficient wallet balance"});
+                                }   
                             }
                             else{
-                                //need to sell stocks of multiple stakeholders
-                            }                              
+                                
+                            }
                         }
-                        ask
-                    });
+                    }
+
                 }
 
             } 
@@ -246,7 +217,8 @@ function getValidStakeholdersFromSellOrder(order: Order, qty: number) {
         stakeholders.push(excessQtyStakeholder);
         qty = 0;
         order.stakeholders.set(excessQtyStakeholderId, excessQtyStakeholder);
-    }   
+    }
+    return {order, stakeholders};
 }
 
 function sortStakeholdersBasedOnOrderCreatedTime(order:Order){
@@ -255,4 +227,19 @@ function sortStakeholdersBasedOnOrderCreatedTime(order:Order){
         return a[1].createdAt.getTime() - b[1].createdAt.getTime();
     });
     return new Map<string, Stakeholder>(sorted);
+}
+
+function clearSellOrder(req:Request, res:Response, buyer:User, sellOrder:Order, buyQty: number, ticker: string) : Order{
+    let {order, stakeholders} = getValidStakeholdersFromSellOrder(sellOrder, buyQty);
+    sellOrder = order;
+    //update buyer balance
+    updateUserBalanceAndAssets(buyer, sellOrder.price, sellOrder.qty, ticker, Side.Buy);
+    for (let j = 0; j < stakeholders.length; j++){
+        let seller = users.get(stakeholders[j].customer_id.toString());
+        if(seller){
+            //update seller balance one-by-one
+            updateUserBalanceAndAssets(seller, order.price, stakeholders[j].qty, ticker, Side.Sell);
+        }
+    }
+    return sellOrder;
 }
