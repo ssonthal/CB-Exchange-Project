@@ -137,7 +137,6 @@ function handleMarketBuyOrders(req:Request, res: Response, order_book:Order[])
                     sellOrders.sort((o1, o2) => o2.price - o1.price);
                     var remaining_qty = buyQty;
                     while (remaining_qty > 0) {
-                        
                         for(let i = 0; i < sellOrders.length; i++) {
                             if (buyer.balance >= sellOrders[i].price*buyQty)
                             {
@@ -285,7 +284,18 @@ function handleLimitBuyOrders(req:Request, res: Response, order_book: Order[]) {
             // check if any buy order at the same price is available. 
             const buyOrders:Order[] = order_book.filter((order) => {order.type == Side.Buy});
             let availableOrder = buyOrders.find((order) => {order.price == askPrice});
-            if (!availableOrder){
+            if (availableOrder) {            
+                if(availableOrder.stakeholders.has(buyer.customer_id.toString()))
+                {
+                    let stakeholder:any = availableOrder.stakeholders.get(buyer.customer_id.toString());
+                    stakeholder.qty += buyQty; 
+                    availableOrder.stakeholders.set(buyer.customer_id.toString(), stakeholder);
+                }
+                else {
+                    availableOrder.stakeholders.set(buyer.customer_id.toString(), { customer_id : buyer.customer_id, qty: buyQty, price: askPrice, createdAt: new Date()});
+                }
+            }
+            else {
                 let stakeholder = new Map<string, Stakeholder>();
                 stakeholder.set(buyer.customer_id.toString(), { customer_id : buyer.customer_id, qty: buyQty, price: askPrice, createdAt: new Date()});
                 let order: Order = {
@@ -297,23 +307,40 @@ function handleLimitBuyOrders(req:Request, res: Response, order_book: Order[]) {
                 }
                 order_book.push(order);
             }
-            else{
-                
-                if(availableOrder.stakeholders.has(buyer.customer_id.toString()))
-                {
-                    let stakeholder:any = availableOrder.stakeholders.get(buyer.customer_id.toString());
-                    stakeholder.qty += buyQty; 
-                    availableOrder.stakeholders.set(buyer.customer_id.toString(), stakeholder);
-
-                }
-                else {
-                    availableOrder.stakeholders.set(buyer.customer_id.toString(), { customer_id : buyer.customer_id, qty: buyQty, price: askPrice, createdAt: new Date()});
-                }
-            }
-            
-            order_book.push({price: askPrice, qty : buyQty, })
         }
-        var remaining_qty = buyQty;
+        else{
+            // there are sell orders at lower price than the buy limit order. which means some sell orders can be eaten up. 
+            let remaining_qty:number = buyQty; 
+            for(let i = 0; i < sellOrders.length && remaining_qty > 0 && sellOrders[i].price < askPrice; i++) {
+                let {unsoldQty, allSellers, ordersToBeRemoved} = processSellOrder(sellOrders[i], remaining_qty, buyer);
+                remaining_qty = unsoldQty;   
+                for (let j = 0; j < allSellers.length; j++){
+                    let seller = users.get(allSellers[j].customer_id.toString());
+                    if(seller) {
+                        updateUserBalanceAndAssets(seller, allSellers[j].price, allSellers[j].qty, ticker, Side.Sell);
+                    }
+                }
+                updateUserBalanceAndAssets(buyer, sellOrders[i].price, sellOrders[i].qty, ticker, Side.Buy);
+                if(ordersToBeRemoved && ordersToBeRemoved.length > 0){
+                    ordersToBeRemoved.map((orderId) => {
+                        order_book.splice(orderId);
+                    });
+                }  
+            }
+            // sell order's qty wasn't sufficient to cut off the buy order. so creating new buy limit order in order book.
+            if (remaining_qty > 0) {
+                let stakeholder = new Map<string, Stakeholder>();
+                stakeholder.set(buyer.customer_id.toString(), { customer_id : buyer.customer_id, qty: remaining_qty, price: askPrice, createdAt: new Date()});
+                let order: Order = {
+                    id: sellOrders.length + 1, 
+                    price: askPrice, 
+                    qty: remaining_qty,
+                    type: Side.Buy,
+                    stakeholders: stakeholder
+                }
+                order_book.push(order);
+            }
+        }
     }
 
 
@@ -325,4 +352,27 @@ function handleLimitSellOrders(req:Request, res: Response, order_book: Order[]) 
     // 1. if any matching buy order found with price equal or greater => place market sell orders at the price for the buy order's qty. 
     // 2. if the qty != 0 => add a new sell limit order in the order book with remaining qty. 
     // 3. step 2 to be done if step 1 condition is false
+}
+
+function processSellOrder(sellOrder:Order, buyQty: number, buyer:User) {
+    let unsoldQty:number = buyQty;
+    let allSellers:Stakeholder[] = [];
+    let ordersToBeRemoved:number[] = [];
+    if (buyer.balance >= sellOrder.price*buyQty)
+    {
+        if (sellOrder.qty > buyQty)
+        {
+            let {order, stakeholders} = getValidStakeholdersFromSellOrder(sellOrder, unsoldQty);
+            sellOrder = order;
+            allSellers.concat(stakeholders);
+        }
+        else {
+            unsoldQty -= sellOrder.qty;
+            for (const [customer_id, stakeholder] of sellOrder.stakeholders) {
+                allSellers.push(stakeholder);
+            }
+            ordersToBeRemoved.push(sellOrder.id);
+        }
+    }
+    return {unsoldQty, allSellers, ordersToBeRemoved};
 }
