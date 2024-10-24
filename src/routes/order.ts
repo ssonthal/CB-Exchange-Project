@@ -268,7 +268,20 @@ function clearSellOrder(req:Request, res:Response, buyer:User, sellOrder:Order, 
 
 
 function handleMarketSellOrders(req:Request, res: Response, order_book: Order[]) {
+    // market  ? => check all buy orders in descending order (who is willing to pay highest for the stock)
+    // until the required qty is met, keep searching.
 
+    // step 1: get all buy orders
+    // step 2: sort in descending order
+    // if qty <= sellQty => one order will be removed and all stakeholders need to be removed
+    // if qty > sellQty => valid stakeholders need to be removed and paid off (FIFO).
+    const ticker = req.body.ticker;
+    const buyOrders = order_books["ticker"].filter((order) => {return order.type == Side.Buy});
+    
+    // sort in desc order
+    buyOrders.sort((o1, o2) => {return o2.price - o1.price;});
+
+    
 }
 function handleLimitBuyOrders(req:Request, res: Response, order_book: Order[]) {
 
@@ -352,6 +365,7 @@ function handleLimitSellOrders(req:Request, res: Response, order_book: Order[]) 
     // 1. if any matching buy order found with price equal or greater => place market sell orders at the price for the buy order's qty. 
     // 2. if the qty != 0 => add a new sell limit order in the order book with remaining qty. 
     // 3. step 2 to be done if step 1 condition is false
+
 }
 
 function processSellOrder(sellOrder:Order, buyQty: number, buyer:User) {
